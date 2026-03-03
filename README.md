@@ -1,48 +1,48 @@
 # bot-wa-go
 
-Bot WhatsApp berbasis Go menggunakan [`whatsmeow`](https://github.com/tulir/whatsmeow), dengan login QR/pairing, sistem plugin, MongoDB storage, fitur media/downloader/game, dan economy system (XP, level, coins, limit).
+A Go-based WhatsApp bot powered by [`whatsmeow`](https://github.com/tulir/whatsmeow), featuring interactive QR/pairing login, plugin-based commands, MongoDB storage, media/downloader tools, and an economy + game system.
 
-## Fitur Utama
-- Login interaktif: cukup `go run ./cmd/bot`, lalu pilih mode `QR` atau `Pairing` di terminal.
-- Prefix multi dan bisa diubah owner: default `.`, `!`, `/`, `?`, `#`.
-- Arsitektur plugin per kategori: `owner`, `group`, `media`, `downloader`, `game`, `general`.
-- Penyimpanan data bot di MongoDB:
-  - `settings`, `groups`, `users`, `tickets`.
-- Sistem owner bertingkat:
-  - `owner_number` di `config.json` = super owner.
-  - owner tambahan via command (`addowner`).
-- Fitur media: `sticker`, `toimg`, `toaudio`, `tovn`, `qc`, `brat`, `upscale`.
-- Downloader: TikTok + Instagram.
-- Group tools: `antilink`, `welcome`, `goodbye`, `tagall`, `hidetag`.
-- Economy: profile, level/xp, coins, daily, work, transfer, buylimit.
-- Game: tebak bendera, kartun, kimia, gambar, math.
+## Features
+- Interactive startup: run once and choose `QR` or `Pairing` in terminal.
+- Multi-prefix support (owner configurable): default `.`, `!`, `/`, `?`, `#`.
+- Plugin architecture by domain: `owner`, `group`, `media`, `downloader`, `game`, `general`.
+- MongoDB-backed persistent data:
+  - `settings`, `groups`, `users`, `tickets` collections.
+- Multi-owner model:
+  - `owner_number` in `config.json` = super owners.
+  - Additional owners can be managed via commands.
+- Media tools: `sticker`, `toimg`, `toaudio`, `tovn`, `qc`, `brat`, `upscale`.
+- Downloader tools: TikTok and Instagram.
+- Group moderation/features: `antilink`, `welcome`, `goodbye`, `tagall`, `hidetag`.
+- Economy system: profile, XP/level, coins, daily, work, transfer, buy limit.
+- Mini games: flag, cartoon, chemistry, image guessing, math.
 
-## Struktur Project
+## Project Structure
 ```text
-cmd/bot/                # entrypoint + core logic
-plugins/api/            # kontrak BotAPI + Context
-plugins/general/        # ping, menu, runtime, profile, economy umum
-plugins/owner/          # owner tools (setprefix, owner mgmt, exec/eval, dll)
-plugins/group/          # fitur group (antilink/welcome/goodbye/tagall)
-plugins/media/          # media tools (sticker, qc, brat, upscale, dll)
-plugins/downloader/     # downloader (tiktok, instagram)
+cmd/bot/                # entrypoint + core runtime logic
+plugins/api/            # BotAPI contract + command context
+plugins/general/        # ping, menu, runtime, profile, economy basics
+plugins/owner/          # owner commands (prefix, owners, exec/eval, limits)
+plugins/group/          # group features (antilink/welcome/goodbye/tagall)
+plugins/media/          # media tools (sticker, qc, brat, upscale, etc.)
+plugins/downloader/     # downloader commands (tiktok, instagram)
 plugins/game/           # game commands
-archive/music/          # fitur music arsip (mac-focused)
+archive/music/          # archived music integration (mac-focused)
 ```
 
 ## Requirements
 - Go `1.22+`
-- MongoDB (disarankan Atlas `mongodb+srv://...`)
-- `ffmpeg` (wajib untuk media conversion)
-- `webpmux` (opsional, untuk metadata watermark sticker)
+- MongoDB (Atlas `mongodb+srv://` recommended)
+- `ffmpeg` (required for media conversion)
+- `webpmux` (optional, for sticker watermark metadata)
 
-MacOS install cepat:
+Quick install on macOS:
 ```bash
 brew install go ffmpeg webp
 ```
 
-## Konfigurasi (`config.json`)
-Contoh minimal:
+## Configuration (`config.json`)
+Minimal example:
 ```json
 {
   "mongo_uri": "mongodb+srv://USER:PASS@cluster.mongodb.net/?retryWrites=true&w=majority",
@@ -52,54 +52,54 @@ Contoh minimal:
 }
 ```
 
-Keterangan:
-- `owner_number`: array nomor super owner (akses penuh, termasuk `$` dan `x`).
-- `bot_number`: nomor bot default untuk pairing (opsional).
+Notes:
+- `owner_number`: array of super-owner phone numbers (full access, including `$` and `x`).
+- `bot_number`: default pairing number (optional).
 
-## Menjalankan Bot
-Install depedensi:
+## Run
+Install dependencies:
 ```bash
 go mod tidy
 ```
 
-Run interaktif (disarankan):
+Run in interactive mode (recommended):
 ```bash
 go run ./cmd/bot
 ```
 
-Run non-interaktif (opsional):
+Run with explicit flags (optional):
 ```bash
 go run ./cmd/bot --auth pair --pair-phone 17789019991
 ```
 
-## Command Ringkas
-> Prefix mengikuti setting aktif (contoh di bawah pakai `.`)
+## Command Overview
+> Command prefix depends on active config (examples below use `.`).
 
 General:
 - `.ping`, `.runtime`, `.menu`, `.help`, `.prefix`
 - `.profile`, `.leaderboard`, `.daily`, `.balance`, `.work`
-- `.transfer <nomor> <coins>`, `.buylimit <jumlah>`
-- `.ticket open <pesan>`, `.ticket my`, `.ticket info <id>`
+- `.transfer <number> <coins>`, `.buylimit <amount>`
+- `.ticket open <message>`, `.ticket my`, `.ticket info <id>`
 
 Owner:
-- `.addowner <nomor>`, `.delowner <nomor>`, `.listowner`
+- `.addowner <number>`, `.delowner <number>`, `.listowner`
 - `.setprefix .,!,#`, `.autoread on|off`, `.setwm pack|author`
-- `.addlimit <nomor> <jumlah>`, `.resetlimit <nomor>`, `.dellimit <nomor>`
-- `.setdaily <xp> <limit> <cooldown_jam>`
+- `.addlimit <number> <amount>`, `.resetlimit <number>`, `.dellimit <number>`
+- `.setdaily <xp> <limit> <cooldown_hours>`
 - `$ <shell command>` (super owner only)
 - `x <expression>` (super owner only)
 
 Group:
 - `.antilink on|off`, `.welcome on|off`, `.goodbye on|off`
 - `.setwelcome <template|reset>`, `.setgoodbye <template|reset>`
-- `.tagall [pesan]`, `.hidetag [pesan]`
+- `.tagall [message]`, `.hidetag [message]`
 
 Media:
-- `.sticker` (reply image/video)
-- `.toimg` (reply sticker/image)
-- `.toaudio`, `.tovn` (reply video/audio)
+- `.sticker` (reply to image/video)
+- `.toimg` (reply to sticker/image)
+- `.toaudio`, `.tovn` (reply to video/audio)
 - `.qc [text]`, `.brat <text>`, `.brat -animate <text>`
-- `.upscale [2|4]` atau `.hd`
+- `.upscale [2|4]` or `.hd`
 
 Downloader:
 - `.tiktok <url>`, `.tt <url>`
@@ -108,10 +108,10 @@ Downloader:
 Game:
 - `.tb`, `.tk`, `.tkimia`, `.tg`, `.math`
 
-## Notes Penting
-- Jangan commit file sensitif (`config.json`, `session.db`).
-- Jika Mongo timeout, cek URI, whitelist IP Atlas, dan DNS.
-- Jika sticker gagal, cek binary `ffmpeg` dan dukungan webp encoder.
+## Important Notes
+- Do not commit sensitive runtime files (`config.json`, `session.db`).
+- If MongoDB times out, verify URI, Atlas IP whitelist, and DNS/network.
+- If sticker conversion fails, verify `ffmpeg` availability and webp support.
 
 ## Development
 Format + build:
@@ -120,10 +120,10 @@ gofmt -w .
 go build ./...
 ```
 
-Test:
+Run tests:
 ```bash
 go test ./...
 ```
 
 ## License
-Gunakan sesuai kebutuhan project kamu. Tambahkan lisensi resmi jika repo akan dibuka publik.
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE).
