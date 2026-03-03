@@ -1,0 +1,21 @@
+# Binaries
+bot
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go build/test artifacts
+*.test
+*.out
+coverage.out
+
+# Runtime/session/config
+session.db
+session.db-shm
+session.db-wal
+config.json
+*.log
+
+# OS files
+.DS_Store
