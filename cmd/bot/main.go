@@ -786,11 +786,27 @@ func (b *Bot) sendGroupEventCard(chat types.JID, target types.JID, delta int, we
 	} else {
 		memberCount += delta // leave event may already have decremented; this is best-effort
 	}
+	if memberCount < 1 {
+		memberCount = 1
+	}
 
-	username := target.User
+	username := strings.TrimSpace(b.resolveDisplayName(target.ToNonAD()))
+	if username == "" {
+		username = strings.TrimSpace(target.User)
+	}
+	if username == "" {
+		username = "Member"
+	}
 	avatar := ""
 	if ppi, err := b.client.GetProfilePictureInfo(context.Background(), target.ToNonAD(), &whatsmeow.GetProfilePictureParams{Preview: true}); err == nil && ppi != nil {
 		avatar = strings.TrimSpace(ppi.URL)
+	}
+	if avatar == "" {
+		avatar = defaultAvatarURL
+	}
+	groupName := strings.TrimSpace(b.groupName(chat))
+	if groupName == "" {
+		groupName = "WhatsApp Group"
 	}
 
 	cardURL := welcomeCardAPI
@@ -803,7 +819,7 @@ func (b *Bot) sendGroupEventCard(chat types.JID, target types.JID, delta int, we
 	}
 	q := u.Query()
 	q.Set("username", username)
-	q.Set("guildName", b.groupName(chat))
+	q.Set("guildName", groupName)
 	q.Set("memberCount", fmt.Sprintf("%d", memberCount))
 	q.Set("avatar", avatar)
 	q.Set("background", defaultCardBG)
@@ -2169,12 +2185,15 @@ func (b *Bot) handleTebakBendera(msg *events.Message, args []string) error {
 	if err != nil {
 		return err
 	}
-	phone := normalizePhone(after.Phone)
-	if phone == "" {
-		phone = normalizePhone(sender.User)
+	winner := strings.TrimSpace(b.resolveDisplayName(sender))
+	if winner == "" {
+		winner = normalizePhone(sender.User)
 	}
-	text := fmt.Sprintf("✅ Jawaban benar @%s\nHadiah: +%d coins\nTotal coins: %d", phone, flagQuizReward, after.Coins)
-	b.ReplyMention(msg, text, []string{phone + "@s.whatsapp.net"})
+	if winner == "" {
+		winner = "Player"
+	}
+	text := fmt.Sprintf("✅ Jawaban benar: %s\nHadiah: +%d coins\nTotal coins: %d", winner, flagQuizReward, after.Coins)
+	b.reply(msg, text)
 	return nil
 }
 
@@ -2310,12 +2329,15 @@ func (b *Bot) handleMathGame(msg *events.Message, args []string) error {
 	if err != nil {
 		return err
 	}
-	phone := normalizePhone(after.Phone)
-	if phone == "" {
-		phone = normalizePhone(sender.User)
+	winner := strings.TrimSpace(b.resolveDisplayName(sender))
+	if winner == "" {
+		winner = normalizePhone(sender.User)
 	}
-	b.ReplyMention(msg, fmt.Sprintf("✅ Math benar @%s\nMode: %s\nHadiah: +%d coins\nTotal coins: %d",
-		phone, current.Mode, reward, after.Coins), []string{phone + "@s.whatsapp.net"})
+	if winner == "" {
+		winner = "Player"
+	}
+	b.reply(msg, fmt.Sprintf("✅ Math benar: %s\nMode: %s\nHadiah: +%d coins\nTotal coins: %d",
+		winner, current.Mode, reward, after.Coins))
 	return nil
 }
 
@@ -2399,12 +2421,15 @@ func (b *Bot) handleTebakKartun(msg *events.Message, args []string) error {
 	if err != nil {
 		return err
 	}
-	phone := normalizePhone(after.Phone)
-	if phone == "" {
-		phone = normalizePhone(sender.User)
+	winner := strings.TrimSpace(b.resolveDisplayName(sender))
+	if winner == "" {
+		winner = normalizePhone(sender.User)
 	}
-	text := fmt.Sprintf("✅ Jawaban benar @%s\nHadiah: +%d coins\nTotal coins: %d", phone, cartoonQuizReward, after.Coins)
-	b.ReplyMention(msg, text, []string{phone + "@s.whatsapp.net"})
+	if winner == "" {
+		winner = "Player"
+	}
+	text := fmt.Sprintf("✅ Jawaban benar: %s\nHadiah: +%d coins\nTotal coins: %d", winner, cartoonQuizReward, after.Coins)
+	b.reply(msg, text)
 	return nil
 }
 
@@ -2478,11 +2503,14 @@ func (b *Bot) handleTebakKimia(msg *events.Message, args []string) error {
 	if err != nil {
 		return err
 	}
-	phone := normalizePhone(after.Phone)
-	if phone == "" {
-		phone = normalizePhone(sender.User)
+	winner := strings.TrimSpace(b.resolveDisplayName(sender))
+	if winner == "" {
+		winner = normalizePhone(sender.User)
 	}
-	b.ReplyMention(msg, fmt.Sprintf("✅ Tebak Kimia benar @%s\nHadiah: +%d coins\nTotal coins: %d", phone, kimiaQuizReward, after.Coins), []string{phone + "@s.whatsapp.net"})
+	if winner == "" {
+		winner = "Player"
+	}
+	b.reply(msg, fmt.Sprintf("✅ Tebak Kimia benar: %s\nHadiah: +%d coins\nTotal coins: %d", winner, kimiaQuizReward, after.Coins))
 	return nil
 }
 
@@ -2566,11 +2594,14 @@ func (b *Bot) handleTebakGambar(msg *events.Message, args []string) error {
 	if err != nil {
 		return err
 	}
-	phone := normalizePhone(after.Phone)
-	if phone == "" {
-		phone = normalizePhone(sender.User)
+	winner := strings.TrimSpace(b.resolveDisplayName(sender))
+	if winner == "" {
+		winner = normalizePhone(sender.User)
 	}
-	b.ReplyMention(msg, fmt.Sprintf("✅ Tebak Gambar benar @%s\nHadiah: +%d coins\nTotal coins: %d", phone, gambarQuizReward, after.Coins), []string{phone + "@s.whatsapp.net"})
+	if winner == "" {
+		winner = "Player"
+	}
+	b.reply(msg, fmt.Sprintf("✅ Tebak Gambar benar: %s\nHadiah: +%d coins\nTotal coins: %d", winner, gambarQuizReward, after.Coins))
 	return nil
 }
 
