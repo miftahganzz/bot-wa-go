@@ -17,6 +17,8 @@ session.db-wal
 config.json
 *.log
 .meow_bootstrap_done
+AGENTS.md
+archive/
 
 # OS files
 .DS_Store
