@@ -1,0 +1,42 @@
+{
+  "_comment": "DO NOT EDIT: FILE GENERATED/ADAPTED FOR PTERODACTYL IMPORT",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-03-08T00:00:00+00:00",
+  "name": "Meow Bot (Whatsmeow)",
+  "author": "you@example.com",
+  "description": "WhatsApp bot Go (whatsmeow) with FFmpeg/WebP tools. Supports GHCR runtime and dev image variants.",
+  "features": null,
+  "docker_images": {
+    "GHCR Meow Bot (latest - ringan)": "ghcr.io/<owner>/<repo>:latest",
+    "GHCR Meow Bot (dev-latest - include Go)": "ghcr.io/<owner>/<repo>:dev-latest"
+  },
+  "file_denylist": [],
+  "startup": "{{STARTUP}}",
+  "config": {
+    "files": "{}",
+    "startup": "{\r\n    \"done\": \"startup command\"\r\n}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\nset -euo pipefail\n\nmkdir -p /mnt/server\ncd /mnt/server\n\necho \"Pterodactyl install step selesai.\"\necho \"File bot sudah tersedia dari image GHCR.\"\n",
+      "container": "ghcr.io/pterodactyl/installers:debian",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Startup Command",
+      "description": "Command utama untuk menjalankan bot.",
+      "env_variable": "STARTUP",
+      "default_value": "./meow-bot",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:512"
+    }
+  ]
+}

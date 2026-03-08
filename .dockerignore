@@ -1,0 +1,6 @@
+.git
+bot
+session.db
+config.json
+archive/
+*.log
