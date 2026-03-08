@@ -1,129 +1,64 @@
-# bot-wa-go
+# Meow Bot Docker Image (GHCR + Pterodactyl)
 
-A Go-based WhatsApp bot powered by [`whatsmeow`](https://github.com/tulir/whatsmeow), featuring interactive QR/pairing login, plugin-based commands, MongoDB storage, media/downloader tools, and an economy + game system.
+README ini diprioritaskan untuk container package GHCR agar langsung jelas cara pakai image Docker bot ini.
 
-## Features
-- Interactive startup: run once and choose `QR` or `Pairing` in terminal.
-- Multi-prefix support (owner configurable): default `.`, `!`, `/`, `?`, `#`.
-- Plugin architecture by domain: `owner`, `group`, `media`, `downloader`, `game`, `general`.
-- MongoDB-backed persistent data:
-  - `settings`, `groups`, `users`, `tickets` collections.
-- Multi-owner model:
-  - `owner_number` in `config.json` = super owners.
-  - Additional owners can be managed via commands.
-- Media tools: `sticker`, `toimg`, `toaudio`, `tovn`, `qc`, `brat`, `upscale`.
-- Downloader tools: TikTok and Instagram.
-- Group moderation/features: `antilink`, `welcome`, `goodbye`, `tagall`, `hidetag`.
-- Economy system: profile, XP/level, coins, daily, work, transfer, buy limit.
-- Mini games: flag, cartoon, chemistry, image guessing, math.
+## Image
+- Runtime (ringan): `ghcr.io/miftahganzz/bot-wa-go:latest`
+- Devbox (lengkap Go): `ghcr.io/miftahganzz/bot-wa-go:dev-latest`
 
-## Project Structure
-```text
-cmd/bot/                # entrypoint + core runtime logic
-plugins/api/            # BotAPI contract + command context
-plugins/general/        # ping, menu, runtime, profile, economy basics
-plugins/owner/          # owner commands (prefix, owners, exec/eval, limits)
-plugins/group/          # group features (antilink/welcome/goodbye/tagall)
-plugins/media/          # media tools (sticker, qc, brat, upscale, etc.)
-plugins/downloader/     # downloader commands (tiktok, instagram)
-plugins/game/           # game commands
-archive/music/          # archived music integration (mac-focused)
-```
+## Tujuan
+Image ini untuk menjalankan bot Whatsmeow (`meow-bot`) di:
+- Pterodactyl Panel
+- Docker lokal / VPS
 
-## Requirements
-- Go `1.22+`
-- MongoDB (Atlas `mongodb+srv://` recommended)
-- `ffmpeg` (required for media conversion)
-- `webpmux` (optional, for sticker watermark metadata)
+## Isi image
+- Binary bot: `meow-bot`
+- Media tools: `ffmpeg`, `webp`, `sqlite3`
+- Terminal tools: `zsh`, `tmux`, `nano`, `vim-tiny`, `less`, `curl`, `wget`, `jq`, `git`
+- Entrypoint: `docker/entrypoint.sh` (banner devbox + support env `STARTUP`)
 
-Quick install on macOS:
+## Perbedaan tag
+- `latest`:
+  - lebih kecil
+  - fokus runtime
+  - tidak include Go toolchain
+- `dev-latest`:
+  - include Go toolchain (`go version` tersedia)
+  - cocok untuk debug/build di container
+  - ukuran lebih besar
+
+## Jalankan lokal
 ```bash
-brew install go ffmpeg webp
+docker run --rm -it \
+  -e STARTUP="./meow-bot --auth qr" \
+  -v $(pwd)/config.json:/home/container/config.json \
+  -v $(pwd)/session.db:/home/container/session.db \
+  ghcr.io/miftahganzz/bot-wa-go:latest
 ```
 
-## Configuration (`config.json`)
-Minimal example:
-```json
-{
-  "mongo_uri": "mongodb+srv://USER:PASS@cluster.mongodb.net/?retryWrites=true&w=majority",
-  "mongo_db": "meow_bot",
-  "owner_number": ["6285171226069"],
-  "bot_number": "17789019991"
-}
-```
+## Setup Pterodactyl
+- Docker image:
+  - `ghcr.io/miftahganzz/bot-wa-go:latest`
+  - atau `ghcr.io/miftahganzz/bot-wa-go:dev-latest`
+- Startup command di egg: `{{STARTUP}}`
+- Env `STARTUP` contoh:
+  - `./meow-bot`
+  - `./meow-bot --auth qr`
+  - `./meow-bot --auth pair --pair-phone 62812xxxxxx --owner 62812xxxxxx`
+- Simpan data runtime:
+  - `/home/container/config.json`
+  - `/home/container/session.db`
 
-Notes:
-- `owner_number`: array of super-owner phone numbers (full access, including `$` and `x`).
-- `bot_number`: default pairing number (optional).
+## Egg Pterodactyl
+- `docker/pterodactyl/egg-meow-bot.json`
+- `docker/pterodactyl/README.md`
 
-## Run
-Install dependencies:
-```bash
-go mod tidy
-```
-
-Run in interactive mode (recommended):
-```bash
-go run ./cmd/bot
-```
-
-Run with explicit flags (optional):
-```bash
-go run ./cmd/bot --auth pair --pair-phone 17789019991
-```
-
-## Command Overview
-> Command prefix depends on active config (examples below use `.`).
-
-General:
-- `.ping`, `.runtime`, `.menu`, `.help`, `.prefix`
-- `.profile`, `.leaderboard`, `.daily`, `.balance`, `.work`
-- `.transfer <number> <coins>`, `.buylimit <amount>`
-- `.ticket open <message>`, `.ticket my`, `.ticket info <id>`
-
-Owner:
-- `.addowner <number>`, `.delowner <number>`, `.listowner`
-- `.setprefix .,!,#`, `.autoread on|off`, `.setwm pack|author`
-- `.addlimit <number> <amount>`, `.resetlimit <number>`, `.dellimit <number>`
-- `.setdaily <xp> <limit> <cooldown_hours>`
-- `$ <shell command>` (super owner only)
-- `x <expression>` (super owner only)
-
-Group:
-- `.antilink on|off`, `.welcome on|off`, `.goodbye on|off`
-- `.setwelcome <template|reset>`, `.setgoodbye <template|reset>`
-- `.tagall [message]`, `.hidetag [message]`
-
-Media:
-- `.sticker` (reply to image/video)
-- `.toimg` (reply to sticker/image)
-- `.toaudio`, `.tovn` (reply to video/audio)
-- `.qc [text]`, `.brat <text>`, `.brat -animate <text>`
-- `.upscale [2|4]` or `.hd`
-
-Downloader:
-- `.tiktok <url>`, `.tt <url>`
-- `.instagram <url>`, `.ig <url>`
-
-Game:
-- `.tb`, `.tk`, `.tkimia`, `.tg`, `.math`
-
-## Important Notes
-- Do not commit sensitive runtime files (`config.json`, `session.db`).
-- If MongoDB times out, verify URI, Atlas IP whitelist, and DNS/network.
-- If sticker conversion fails, verify `ffmpeg` availability and webp support.
-
-## Development
-Format + build:
-```bash
-gofmt -w .
-go build ./...
-```
-
-Run tests:
-```bash
-go test ./...
-```
+## Sumber Docker config
+Semua file Docker ada di folder:
+- `docker/Dockerfile`
+- `docker/Dockerfile.dev`
+- `docker/entrypoint.sh`
+- `docker/README.md`
 
 ## License
-This project is licensed under the MIT License. See [`LICENSE`](LICENSE).
+MIT. Lihat `LICENSE`.
