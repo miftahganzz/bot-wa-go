@@ -22,11 +22,15 @@ jobs:
             latest_tag: latest
             sha_prefix: sha-
             tag_suffix: ""
+            image_title: "Meow Bot Runtime"
+            image_description: "Lightweight runtime image for Meow Whatsmeow bot with ffmpeg/webp and terminal tools."
           - name: dev
             dockerfile: docker/Dockerfile.dev
             latest_tag: dev-latest
             sha_prefix: dev-sha-
             tag_suffix: -dev
+            image_title: "Meow Bot Devbox"
+            image_description: "Development image for Meow Whatsmeow bot with full Go toolchain, ffmpeg/webp, and terminal tools."
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,3 +80,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image_title }}
+            org.opencontainers.image.description=${{ matrix.image_description }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/tree/main/docker
