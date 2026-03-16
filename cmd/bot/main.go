@@ -16,6 +16,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -66,6 +67,7 @@ const (
 	kimiaQuizReward    = int64(140)
 	gambarQuizTimeout  = 2 * time.Minute
 	gambarQuizReward   = int64(170)
+	waConnectMaxRetry  = 8
 )
 
 var defaultPrefixes = []string{".", "!", "/", "?", "#"}
@@ -240,6 +242,7 @@ func main() {
 	printStep("Init", "mempersiapkan WhatsApp client")
 	clientLog := newFilteredLogger(waLog.Stdout("Client", "INFO", true))
 	client := whatsmeow.NewClient(deviceStore, clientLog)
+	prepareWhatsAppHTTP(client)
 
 	bot, err := NewBot(client, cfg.OwnerNumbers)
 	if err != nil {
@@ -345,6 +348,28 @@ func prettyPrompt(label string) string {
 }
 
 func connectClient(client *whatsmeow.Client, authMode, pairPhone string) error {
+	var lastErr error
+	for attempt := 1; attempt <= waConnectMaxRetry; attempt++ {
+		if attempt > 1 {
+			backoff := time.Duration(attempt*3) * time.Second
+			printWarn(fmt.Sprintf("retry koneksi WhatsApp (%d/%d) dalam %s", attempt, waConnectMaxRetry, backoff))
+			time.Sleep(backoff)
+		}
+
+		err := connectClientOnce(client, authMode, pairPhone)
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+		if !isRetryableConnectErr(err) {
+			return err
+		}
+	}
+	return lastErr
+}
+
+func connectClientOnce(client *whatsmeow.Client, authMode, pairPhone string) error {
 	if client.Store.ID != nil {
 		return client.Connect()
 	}
@@ -402,6 +427,70 @@ func connectClient(client *whatsmeow.Client, authMode, pairPhone string) error {
 	}
 
 	return errors.New("channel login tertutup sebelum sukses")
+}
+
+func prepareWhatsAppHTTP(client *whatsmeow.Client) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyFromEnvironment
+	transport.DialContext = (&net.Dialer{
+		Timeout:   35 * time.Second,
+		KeepAlive: 35 * time.Second,
+	}).DialContext
+	transport.TLSHandshakeTimeout = 45 * time.Second
+	transport.ResponseHeaderTimeout = 45 * time.Second
+	transport.ExpectContinueTimeout = 2 * time.Second
+	transport.IdleConnTimeout = 120 * time.Second
+	transport.MaxIdleConns = 200
+	transport.MaxIdleConnsPerHost = 50
+	transport.ForceAttemptHTTP2 = false
+
+	wsHTTP := &http.Client{Transport: transport}
+	client.SetPreLoginHTTPClient(wsHTTP)
+	client.SetWebsocketHTTPClient(wsHTTP)
+
+	proxyAddr := strings.TrimSpace(os.Getenv("WHATSAPP_PROXY"))
+	if proxyAddr == "" {
+		proxyAddr = strings.TrimSpace(os.Getenv("WA_PROXY"))
+	}
+	if proxyAddr != "" {
+		if err := client.SetProxyAddress(proxyAddr); err != nil {
+			printWarn("env proxy tidak valid, fallback tanpa proxy: " + err.Error())
+		} else {
+			printStep("Net", "WhatsApp proxy aktif")
+		}
+	}
+}
+
+func isRetryableConnectErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	var nerr net.Error
+	if errors.As(err, &nerr) && (nerr.Timeout() || nerr.Temporary()) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	retryableHints := []string{
+		"tls handshake timeout",
+		"i/o timeout",
+		"timeout",
+		"connection reset by peer",
+		"temporary failure",
+		"no such host",
+		"server misbehaving",
+		"eof",
+		"failed to dial whatsapp web websocket",
+		"503",
+		"502",
+		"504",
+	}
+	for _, hint := range retryableHints {
+		if strings.Contains(msg, hint) {
+			return true
+		}
+	}
+	return false
 }
 
 func NewBot(client *whatsmeow.Client, superOwners []string) (*Bot, error) {
@@ -607,8 +696,10 @@ func (b *Bot) maybeGainXP(msg *events.Message) {
 		log.Printf("gagal set level user: %v", err)
 		return
 	}
-	if err := b.sendLevelUpCard(msg, fromLevel, toLevel, stats); err != nil {
-		log.Printf("gagal kirim level up card: %v", err)
+	if b.shouldSendLevelUp(msg) {
+		if err := b.sendLevelUpCard(msg, fromLevel, toLevel, stats); err != nil {
+			log.Printf("gagal kirim level up card: %v", err)
+		}
 	}
 }
 
@@ -942,12 +1033,9 @@ func (b *Bot) sendLevelUpCard(msg *events.Message, fromLevel, toLevel int, stats
 	if msg == nil {
 		return nil
 	}
-	name := strings.TrimSpace(stats.PushName)
-	if name == "" {
-		name = stats.Phone
-	}
-	targetJID := types.NewJID(stats.Phone, types.DefaultUserServer)
-	avatar := b.getProfilePictureURL(targetJID)
+	targetJID := b.resolveStatsJID(msg, stats)
+	name := b.resolveStatsDisplayName(targetJID, stats)
+	avatar := b.resolveProfileAvatarURL(msg, targetJID, stats, stats.Phone)
 	if strings.TrimSpace(avatar) == "" {
 		avatar = defaultAvatarURL
 	}
@@ -966,9 +1054,56 @@ func (b *Bot) sendLevelUpCard(msg *events.Message, fromLevel, toLevel int, stats
 	q.Set("height", "1280")
 	u.RawQuery = q.Encode()
 
-	caption := fmt.Sprintf("🎉 Level up @%s\nLevel %d -> %d", stats.Phone, fromLevel, toLevel)
-	mentions := []string{stats.Phone + "@s.whatsapp.net"}
+	caption := fmt.Sprintf("🎉 Level up: %s\nLevel %d -> %d", name, fromLevel, toLevel)
+	mentions := []string{}
+	if targetJID.User != "" {
+		mentions = append(mentions, targetJID.String())
+	}
 	return b.sendCanvasImage(msg.Info.Chat, u.String(), caption, mentions)
+}
+
+func (b *Bot) resolveStatsJID(msg *events.Message, stats UserStats) types.JID {
+	if stats.JID != "" {
+		if j, err := types.ParseJID(stats.JID); err == nil {
+			return j.ToNonAD()
+		}
+	}
+	if msg != nil {
+		if sender := b.commandSenderJID(msg); sender.User != "" && normalizePhone(sender.User) == normalizePhone(stats.Phone) {
+			return sender
+		}
+		if quoted := getQuotedParticipant(msg); quoted.User != "" && normalizePhone(quoted.User) == normalizePhone(stats.Phone) {
+			return quoted.ToNonAD()
+		}
+	}
+	if p := normalizePhone(stats.Phone); p != "" {
+		return types.NewJID(p, types.DefaultUserServer)
+	}
+	return types.EmptyJID
+}
+
+func (b *Bot) resolveStatsDisplayName(targetJID types.JID, stats UserStats) string {
+	name := strings.TrimSpace(stats.PushName)
+	if name == "" && targetJID.User != "" {
+		name = strings.TrimSpace(b.resolveDisplayName(targetJID))
+	}
+	if name == "" {
+		name = normalizePhone(stats.Phone)
+	}
+	if name == "" {
+		name = "user"
+	}
+	return name
+}
+
+func (b *Bot) shouldSendLevelUp(msg *events.Message) bool {
+	if !b.store.LevelUpEnabled() {
+		return false
+	}
+	if msg == nil || !msg.Info.IsGroup {
+		return true
+	}
+	return b.getGroupConfig(msg.Info.Chat).LevelUp
 }
 
 func (b *Bot) handleAntiLink(msg *events.Message, text string) bool {
@@ -1207,6 +1342,7 @@ func (b *Bot) helpText() string {
 		"- owner/setprefix <list>\n" +
 		"- owner/setwm <pack>|<author>\n" +
 		"- owner/autoread <on|off>\n" +
+		"- owner/levelup <on|off>\n" +
 		"- owner/addlimit <nomor> <jumlah>\n" +
 		"- owner/resetlimit <nomor>\n" +
 		"- owner/dellimit <nomor>\n" +
@@ -1218,6 +1354,7 @@ func (b *Bot) helpText() string {
 		"- group/antilink <on|off>\n" +
 		"- group/welcome <on|off>\n" +
 		"- group/goodbye <on|off>\n" +
+		"- group/levelup <on|off>\n" +
 		"- group/setwelcome <template|reset>\n" +
 		"- group/setgoodbye <template|reset>\n" +
 		"- group/tagall [pesan]\n" +
@@ -1532,6 +1669,9 @@ func (b *Bot) handleProfile(msg *events.Message, args []string) error {
 		name = b.resolveDisplayName(targetJID)
 	}
 	if strings.TrimSpace(name) == "" {
+		name = targetPhone
+	}
+	if strings.TrimSpace(name) == "" {
 		name = "user"
 	}
 	rankName := strings.TrimSpace(rankNameByLevel(level))
@@ -1570,7 +1710,11 @@ func (b *Bot) handleProfile(msg *events.Message, args []string) error {
 
 	caption := fmt.Sprintf("👤 Profile: %s\n🏅 Rank: %s\n⭐ Level: %d\n✨ XP: %d/%d (total %d)\n🎟️ Limit: %d",
 		name, rankNameByLevel(level), level, progress, need, stats.XP, stats.Limit)
-	return b.sendCanvasImage(msg.Info.Chat, u.String(), caption, nil)
+	mentions := []string{}
+	if targetJID.User != "" {
+		mentions = append(mentions, targetJID.String())
+	}
+	return b.sendCanvasImage(msg.Info.Chat, u.String(), caption, mentions)
 }
 
 func (b *Bot) commandSenderPhone(msg *events.Message) string {
@@ -1718,7 +1862,9 @@ func (b *Bot) handleDaily(msg *events.Message) error {
 	if toLevel > fromLevel {
 		_ = b.store.SetUserLevel(sender.String(), toLevel)
 		after.Level = toLevel
-		_ = b.sendLevelUpCard(msg, fromLevel, toLevel, after)
+		if b.shouldSendLevelUp(msg) {
+			_ = b.sendLevelUpCard(msg, fromLevel, toLevel, after)
+		}
 	}
 
 	phone := normalizePhone(after.Phone)
@@ -2899,6 +3045,7 @@ func (b *Bot) SendMenuButtons(msg *events.Message) error {
 		"│  • " + prefix + "setprefix .,!,#\n" +
 		"│  • " + prefix + "setwm meow bot|miftah\n" +
 		"│  • " + prefix + "autoread on|off\n" +
+		"│  • " + prefix + "owner/levelup on|off\n" +
 		"│  • " + prefix + "addlimit [no/reply] 5\n" +
 		"│  • " + prefix + "resetlimit [no/reply]\n" +
 		"│  • " + prefix + "dellimit [no/reply]\n" +
@@ -2910,6 +3057,7 @@ func (b *Bot) SendMenuButtons(msg *events.Message) error {
 		"│  • " + prefix + "antilink on|off\n" +
 		"│  • " + prefix + "welcome on|off\n" +
 		"│  • " + prefix + "goodbye on|off\n" +
+		"│  • " + prefix + "levelup on|off\n" +
 		"│  • " + prefix + "setwelcome 👋 {user} to {group}\n" +
 		"│  • " + prefix + "setgoodbye 👋 {user}\n" +
 		"│  • " + prefix + "tagall [pesan]\n" +
@@ -2988,8 +3136,14 @@ func (b *Bot) HandleMathGame(msg *events.Message, args []string) error {
 
 func (b *Bot) GetPrefixes() []string { return b.getPrefixes() }
 func (b *Bot) GetAutoRead() bool     { return b.getAutoRead() }
+func (b *Bot) GetLevelUpEnabled() bool {
+	return b.store.LevelUpEnabled()
+}
 func (b *Bot) SetAutoRead(on bool) error {
 	return b.setAutoRead(on)
+}
+func (b *Bot) SetLevelUpEnabled(on bool) error {
+	return b.store.SetLevelUpEnabled(on)
 }
 func (b *Bot) GetStickerWM() (string, string) { return b.store.StickerWM() }
 func (b *Bot) SetStickerWM(pack, author string) error {

@@ -38,6 +38,7 @@ type globalSettingsDoc struct {
 	ExtraOwners   []string  `bson:"extra_owners,omitempty"`
 	Prefixes      []string  `bson:"prefixes"`
 	AutoRead      bool      `bson:"autoread"`
+	LevelUp       *bool     `bson:"level_up,omitempty"`
 	StickerPack   string    `bson:"sticker_pack"`
 	StickerAuthor string    `bson:"sticker_author"`
 	DailyXP       int64     `bson:"daily_xp"`
@@ -51,6 +52,7 @@ type groupSettingsDoc struct {
 	AntiLink        bool      `bson:"antilink"`
 	Welcome         bool      `bson:"welcome"`
 	Goodbye         bool      `bson:"goodbye"`
+	LevelUp         *bool     `bson:"level_up,omitempty"`
 	WelcomeTemplate string    `bson:"welcome_template,omitempty"`
 	GoodbyeTemplate string    `bson:"goodbye_template,omitempty"`
 	UpdatedAt       time.Time `bson:"updated_at"`
@@ -153,6 +155,7 @@ type MongoStore struct {
 	extra    []string
 	prefixes []string
 	autoRead bool
+	levelUp  bool
 	wmPack   string
 	wmAuthor string
 	dailyXP  int64
@@ -225,6 +228,8 @@ func NewMongoStore() (*MongoStore, error) {
 	}
 	return store, nil
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 func loadBotConfig(path string) (BotConfig, error) {
 	cfg := BotConfig{
@@ -360,6 +365,7 @@ func (s *MongoStore) load(ctx context.Context) error {
 			ExtraOwners:   nil,
 			Prefixes:      append([]string{}, defaultPrefixes...),
 			AutoRead:      false,
+			LevelUp:       boolPtr(true),
 			StickerPack:   "meow bot",
 			StickerAuthor: "meow",
 			DailyXP:       defaultDailyXP,
@@ -380,6 +386,10 @@ func (s *MongoStore) load(ctx context.Context) error {
 		s.prefixes = append([]string{}, defaultPrefixes...)
 	}
 	s.autoRead = global.AutoRead
+	s.levelUp = true
+	if global.LevelUp != nil {
+		s.levelUp = *global.LevelUp
+	}
 	s.wmPack = strings.TrimSpace(global.StickerPack)
 	s.wmAuthor = strings.TrimSpace(global.StickerAuthor)
 	if s.wmPack == "" {
@@ -419,6 +429,7 @@ func (s *MongoStore) load(ctx context.Context) error {
 			AntiLink:        g.AntiLink,
 			Welcome:         g.Welcome,
 			Goodbye:         g.Goodbye,
+			LevelUp:         g.LevelUp == nil || *g.LevelUp,
 			WelcomeTemplate: g.WelcomeTemplate,
 			GoodbyeTemplate: g.GoodbyeTemplate,
 		}
@@ -455,6 +466,12 @@ func (s *MongoStore) AutoRead() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.autoRead
+}
+
+func (s *MongoStore) LevelUpEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.levelUp
 }
 
 func (s *MongoStore) SetOwner(owner string) error {
@@ -566,12 +583,19 @@ func (s *MongoStore) SetStickerWM(pack, author string) error {
 func (s *MongoStore) GroupConfig(chat string) api.GroupConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.groupCfg[chat]
+	cfg, ok := s.groupCfg[chat]
+	if !ok {
+		cfg.LevelUp = true
+	}
+	return cfg
 }
 
 func (s *MongoStore) UpdateGroupConfig(chat string, update func(*api.GroupConfig)) error {
 	s.mu.Lock()
-	cfg := s.groupCfg[chat]
+	cfg, ok := s.groupCfg[chat]
+	if !ok {
+		cfg.LevelUp = true
+	}
 	update(&cfg)
 	s.groupCfg[chat] = cfg
 	s.mu.Unlock()
@@ -583,6 +607,7 @@ func (s *MongoStore) UpdateGroupConfig(chat string, update func(*api.GroupConfig
 		AntiLink:        cfg.AntiLink,
 		Welcome:         cfg.Welcome,
 		Goodbye:         cfg.Goodbye,
+		LevelUp:         boolPtr(cfg.LevelUp),
 		WelcomeTemplate: strings.TrimSpace(cfg.WelcomeTemplate),
 		GoodbyeTemplate: strings.TrimSpace(cfg.GoodbyeTemplate),
 		UpdatedAt:       time.Now(),
@@ -1296,6 +1321,7 @@ func (s *MongoStore) persistGlobalLocked(ctx context.Context) error {
 		ExtraOwners:   append([]string{}, s.extra...),
 		Prefixes:      append([]string{}, s.prefixes...),
 		AutoRead:      s.autoRead,
+		LevelUp:       boolPtr(s.levelUp),
 		StickerPack:   s.wmPack,
 		StickerAuthor: s.wmAuthor,
 		DailyXP:       s.dailyXP,
@@ -1307,6 +1333,14 @@ func (s *MongoStore) persistGlobalLocked(ctx context.Context) error {
 		return fmt.Errorf("gagal simpan settings global: %w", err)
 	}
 	return nil
+}
+
+func (s *MongoStore) SetLevelUpEnabled(on bool) error {
+	s.mu.Lock()
+	s.levelUp = on
+	err := s.persistGlobalLocked(context.Background())
+	s.mu.Unlock()
+	return err
 }
 
 func normalizePhoneList(in []string) []string {

@@ -12,8 +12,8 @@ func (p *Plugin) Name() string { return "group" }
 
 func (p *Plugin) Commands() []string {
 	return []string{
-		"antilink", "welcome", "goodbye", "tagall", "hidetag", "setwelcome", "setgoodbye",
-		"group/antilink", "group/welcome", "group/goodbye", "group/tagall", "group/hidetag", "group/setwelcome", "group/setgoodbye",
+		"antilink", "welcome", "goodbye", "levelup", "tagall", "hidetag", "setwelcome", "setgoodbye",
+		"group/antilink", "group/welcome", "group/goodbye", "group/levelup", "group/tagall", "group/hidetag", "group/setwelcome", "group/setgoodbye",
 	}
 }
 
@@ -25,6 +25,8 @@ func (p *Plugin) Handle(ctx *api.Context) bool {
 		return p.handleWelcome(ctx)
 	case "goodbye":
 		return p.handleGoodbye(ctx)
+	case "levelup":
+		return p.handleLevelUp(ctx)
 	case "tagall":
 		return p.handleTagAll(ctx)
 	case "hidetag":

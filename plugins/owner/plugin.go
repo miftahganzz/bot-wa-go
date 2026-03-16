@@ -15,7 +15,7 @@ func (p *Plugin) Commands() []string {
 		"setowner", "addowner", "delowner", "listowner", "setprefix", "setwm", "setstickerwm", "autoread", "exec", "eval",
 		"addlimit", "resetlimit", "dellimit", "setdaily",
 		"owner/setowner", "owner/addowner", "owner/delowner", "owner/listowner",
-		"owner/setprefix", "owner/setwm", "owner/setstickerwm", "owner/autoread", "owner/exec", "owner/eval",
+		"owner/setprefix", "owner/setwm", "owner/setstickerwm", "owner/autoread", "owner/levelup", "owner/exec", "owner/eval",
 		"owner/addlimit", "owner/resetlimit", "owner/dellimit", "owner/setdaily",
 	}
 }
@@ -24,6 +24,8 @@ func (p *Plugin) Handle(ctx *api.Context) bool {
 	switch normalizeOwnerCommand(ctx.Command) {
 	case "autoread":
 		return p.handleAutoRead(ctx)
+	case "levelup":
+		return p.handleLevelUp(ctx)
 	case "setprefix":
 		return p.handleSetPrefix(ctx)
 	case "setwm", "setstickerwm":

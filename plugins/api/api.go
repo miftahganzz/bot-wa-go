@@ -11,6 +11,7 @@ type GroupConfig struct {
 	AntiLink        bool   `json:"antilink"`
 	Welcome         bool   `json:"welcome"`
 	Goodbye         bool   `json:"goodbye"`
+	LevelUp         bool   `json:"levelup"`
 	WelcomeTemplate string `json:"welcome_template"`
 	GoodbyeTemplate string `json:"goodbye_template"`
 }
@@ -41,6 +42,8 @@ type BotAPI interface {
 	GetPrefixes() []string
 	GetAutoRead() bool
 	SetAutoRead(bool) error
+	GetLevelUpEnabled() bool
+	SetLevelUpEnabled(bool) error
 	GetStickerWM() (string, string)
 	SetStickerWM(pack, author string) error
 
